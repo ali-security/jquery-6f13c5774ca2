@@ -60,6 +60,75 @@ module( "ajax", {
 		}
 	});
 
+	ajaxTest( "jQuery.ajax() - do not execute js (crossOrigin)", 2, {
+		create: function( options ) {
+			options.crossDomain = true;
+			return jQuery.ajax( url("data/script.php?header=ecma"), options );
+		},
+		success: function() {
+			ok( true, "success" );
+		},
+		complete: function() {
+			ok( true, "complete" );
+		}
+	});
+
+	ajaxTest( "jQuery.ajax() - execute js for crossOrigin when dataType option is provided", 3, {
+		create: function( options ) {
+			options.crossDomain = true;
+			options.dataType = "script";
+			return jQuery.ajax( url("data/script.php?header=ecma"), options );
+		},
+		success: function() {
+			ok( true, "success" );
+		},
+		complete: function() {
+			ok( true, "complete" );
+		}
+	});
+
+	ajaxTest( "jQuery.ajax() - do not execute js (crossOrigin)", 2, {
+		create: function( options ) {
+			options.crossDomain = true;
+			return jQuery.ajax( url("data/script.php"), options );
+		},
+		success: function() {
+			ok( true, "success" );
+		},
+		complete: function() {
+			ok( true, "complete" );
+		}
+	});
+
+	ajaxTest( "jQuery.ajax() - do not execute js for urls the browser resolves crossOrigin", 7, function() {
+		function request( url, title, script ) {
+			return {
+				url: url,
+				beforeSend: function( _, s ) {
+					if ( script ) {
+						ok( s.contents.script, title );
+					} else {
+						strictEqual( s.contents.script, false, title );
+					}
+					return false;
+				},
+				error: true
+			};
+		}
+
+		var remote = "example.invalid/data/script.php?header=ecma";
+
+		return [
+			request( "http://" + remote, "Absolute cross-origin url" ),
+			request( " http://" + remote, "Cross-origin url with leading whitespace" ),
+			request( "\nhttp://" + remote, "Cross-origin url with a leading newline" ),
+			request( "ht\ttp://" + remote, "Cross-origin url with a tab in its scheme" ),
+			request( "/\\" + remote, "Scheme-relative cross-origin url with a backslash" ),
+			request( "\\\\" + remote, "Scheme-relative cross-origin url with backslashes" ),
+			request( url("data/script.php?header=ecma"), "Same-origin url keeps sniffing scripts", true )
+		];
+	});
+
 	ajaxTest( "jQuery.ajax() - success callbacks (late binding)", 8, {
 		setup: addGlobalEvents("ajaxStart ajaxStop ajaxSend ajaxComplete ajaxSuccess"),
 		url: url("data/name.html"),

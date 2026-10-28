@@ -3,6 +3,38 @@ define([
 	"../ajax"
 ], function( jQuery ) {
 
+// Tell whether the browser sends a request for url to another origin than the document's.
+// The crossDomain detection of jQuery.ajax parses urls with a regex that misses some the browser
+// still resolves to another origin (leading whitespace, tabs, backslashes...), so ask the browser.
+function isCrossOrigin( url ) {
+	var originAnchor = document.createElement("a"),
+		urlAnchor = document.createElement("a");
+
+	// Support: IE<=11
+	// IE throws on malformed urls, and may throw when reading location once
+	// document.domain has been set (#8138); the browser cannot request those either
+	try {
+		originAnchor.href = location.href;
+		urlAnchor.href = url;
+
+		// Support: IE<=11
+		// Anchor's host property isn't correctly set when its href is relative
+		urlAnchor.href = urlAnchor.href;
+
+		return originAnchor.protocol + "//" + originAnchor.host !==
+			urlAnchor.protocol + "//" + urlAnchor.host;
+	} catch( e ) {
+		return false;
+	}
+}
+
+// Prevent auto-execution of scripts when no explicit dataType was provided (See gh-2432)
+jQuery.ajaxPrefilter(function( s ) {
+	if ( s.crossDomain || isCrossOrigin( s.url ) ) {
+		s.contents.script = false;
+	}
+});
+
 // Install script dataType
 jQuery.ajaxSetup({
 	accepts: {
