@@ -2572,3 +2572,131 @@ asyncTest( "Sanitized HTML doesn't get unsanitized by buildFragment-based method
 		start();
 	}, 1000 );
 });
+
+// Support: IE<=9 only
+// IE <=9 replaces <option> tags with their contents when inserted outside of
+// the select element, so jQuery still has to wrap them in a <select> there
+function optionNeedsSelectWrapper() {
+	var div = document.createElement("div");
+	div.innerHTML = "<option></option>";
+	return !div.lastChild;
+}
+
+test( "<option> & <optgroup> markup is not parsed inside a <select> wrapper (gh-4647)", function() {
+
+	var nodes, div;
+
+	if ( optionNeedsSelectWrapper() ) {
+		expect( 1 );
+		ok( true, "<option> markup needs a <select> wrapper in this browser" );
+		return;
+	}
+
+	expect( 17 );
+
+	// A </select> in the markup must not close a wrapper added by jQuery
+	// and move the markup that follows it into another parsing context
+	nodes = jQuery.parseHTML("<option>a</option></select><b>c</b>");
+	equal( nodes.length, 2, "jQuery.parseHTML(): Found two top-level nodes" );
+	equal( nodes[ 0 ] && nodes[ 0 ].nodeName.toLowerCase(), "option", "jQuery.parseHTML(): First node is the <option>" );
+	equal( nodes[ 1 ] && nodes[ 1 ].nodeName.toLowerCase(), "b", "jQuery.parseHTML(): Second node is the <b>" );
+
+	nodes = jQuery.parseHTML("<optgroup label='a'></optgroup></select><b>c</b>");
+	equal( nodes.length, 2, "jQuery.parseHTML(): Found two top-level nodes for <optgroup>" );
+	equal( nodes[ 0 ] && nodes[ 0 ].nodeName.toLowerCase(), "optgroup", "jQuery.parseHTML(): First node is the <optgroup>" );
+	equal( nodes[ 1 ] && nodes[ 1 ].nodeName.toLowerCase(), "b", "jQuery.parseHTML(): Second node is the <b>" );
+
+	nodes = jQuery("<option>a</option></select><b>c</b>");
+	equal( nodes.length, 2, "jQuery(): Found two top-level elements" );
+	equal( nodes[ 0 ] && nodes[ 0 ].nodeName.toLowerCase(), "option", "jQuery(): First element is the <option>" );
+	equal( nodes[ 1 ] && nodes[ 1 ].nodeName.toLowerCase(), "b", "jQuery(): Second element is the <b>" );
+
+	div = jQuery("<div></div>").append("<option>a</option></select><b>c</b>");
+	equal( div.children("option").length, 1, "append(): The <option> was appended" );
+	equal( div.children("b").length, 1, "append(): The <b> was appended" );
+
+	div = jQuery("<div></div>").html("<option>a</option></select><b>c</b>");
+	equal( div.children("option").length, 1, "html(): The <option> was inserted" );
+	equal( div.children("b").length, 1, "html(): The <b> was inserted" );
+
+	// The sanitized payload from gh-4647 must keep its markup inert inside the <style>
+	nodes = jQuery.parseHTML("<option><style></option></select><img src=url404></style>");
+	equal( nodes.length, 1, "Sanitized payload: Found one top-level node" );
+	equal( nodes[ 0 ] && nodes[ 0 ].nodeName.toLowerCase(), "option", "Sanitized payload: The node is the <option>" );
+	equal( jQuery( nodes ).find("img").length, 0, "Sanitized payload: No <img> element was created" );
+	equal( jQuery( nodes ).find("style").length, 1, "Sanitized payload: The <style> element was kept" );
+});
+
+asyncTest( "Sanitized <option> & <optgroup> HTML doesn't get unsanitized (gh-4647)", function() {
+
+	var container, i, j, payload,
+		counter = 0,
+		executed = {},
+		payloads = [],
+		templates = [
+			"<option><style></option></select><img src=url404 onerror=xss(#)></style>",
+			"<optgroup><style></optgroup></select><img src=url404 onerror=xss(#)></style>"
+		],
+		methods = [
+			[ "html", function( html ) {
+				jQuery("<div></div>").appendTo( container ).html( html );
+			} ],
+			[ "append", function( html ) {
+				jQuery("<div></div>").appendTo( container ).append( html );
+			} ],
+			[ "prepend", function( html ) {
+				jQuery("<div></div>").appendTo( container ).prepend( html );
+			} ],
+			[ "before", function( html ) {
+				jQuery("<div></div>").appendTo( container ).before( html );
+			} ],
+			[ "after", function( html ) {
+				jQuery("<div></div>").appendTo( container ).after( html );
+			} ],
+			[ "replaceWith", function( html ) {
+				jQuery("<div></div>").appendTo( container ).replaceWith( html );
+			} ],
+			[ "jQuery", function( html ) {
+				jQuery( html );
+			} ],
+			[ "jQuery.parseHTML", function( html ) {
+
+				// Use the live document as context; the default inert document
+				// never loads images, so it can't expose the payload
+				jQuery.parseHTML( html, document );
+			} ]
+		];
+
+	if ( optionNeedsSelectWrapper() ) {
+		expect( 1 );
+		ok( true, "<option> markup needs a <select> wrapper in this browser" );
+		start();
+		return;
+	}
+
+	expect( templates.length * methods.length );
+
+	Globals.register("xss");
+	window.xss = function( index ) {
+		executed[ index ] = true;
+	};
+
+	container = jQuery("<div></div>").appendTo("#qunit-fixture");
+
+	for ( i = 0; i < templates.length; i++ ) {
+		for ( j = 0; j < methods.length; j++ ) {
+			payload = templates[ i ].replace( "#", counter );
+			payloads.push( methods[ j ][ 0 ] + "( " + payload + " )" );
+			methods[ j ][ 1 ]( payload );
+			counter++;
+		}
+	}
+
+	// Using a timeout because of async `onerror` handling
+	setTimeout(function() {
+		for ( i = 0; i < payloads.length; i++ ) {
+			ok( !executed[ i ], "Insecure code wasn't executed, input: " + payloads[ i ] );
+		}
+		start();
+	}, 1000 );
+});
