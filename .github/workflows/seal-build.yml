@@ -1,0 +1,41 @@
+name: seal-build
+
+# Build-and-pack only: the test suite runs on Travis (.travis.yml).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NPM_CONFIG_REGISTRY: https://:2014-05-01T18%3A05%3A32.863000Z@time-machines-npm.sealsecurity.io/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '0.10'
+      - name: Install faketime
+        run: sudo apt-get update && sudo apt-get install -y faketime
+      - run: npm install
+      # The build stamps the current date into dist/jquery.js and the min banner; pin it to the release build's
+      - name: Build (grunt)
+        run: faketime -f '@2014-05-01 17:42:00' ./node_modules/.bin/grunt
+      # dist/cdn/* copies, made by upstream's release script (build/release.js, generateArtifacts)
+      - name: Make CDN release copies
+        run: |
+          npm install shelljs@0.2.6
+          node -e '
+            var Release = { newVersion: require( "./package.json" ).version, preRelease: false,
+              exec: function() {}, complete: function() {} };
+            Release.define = function( o ) { Release.config = o; };
+            require( "./build/release.js" )( Release );
+            Release.config.generateArtifacts( function( files ) { console.log( files ); } );
+          '
+          ls -l dist/cdn
+      - run: npm pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: jquery-*.tgz
+          if-no-files-found: error

@@ -1,3 +1,26 @@
 language: node_js
+# jammy: the headless browser suite below needs node 18 + a current Chrome,
+# neither of which runs on Travis's default xenial image
+dist: jammy
 node_js:
 - '0.10'
+before_install:
+- npm config set registry https://:2014-05-01T18%3A05%3A32.863000Z@time-machines-npm.sealsecurity.io/
+script:
+# upstream: grunt build + lint + uglify (no unit tests)
+- npm test
+# the QUnit unit suite (test/index.html) in headless Chrome, served with PHP for the ajax tests;
+# one fresh multi-worker server per run, since several test endpoints sleep (core/dont_return.php: 30s)
+- php --version
+- PHP_CLI_SERVER_WORKERS=16 php -S 127.0.0.1:8000 -t . > /tmp/php-server-8000.log 2>&1 &
+- PHP_CLI_SERVER_WORKERS=16 php -S 127.0.0.1:8001 -t . > /tmp/php-server-8001.log 2>&1 &
+- nvm install 18
+- mkdir -p $HOME/seal-qunit && (cd $HOME/seal-qunit && npm init -y > /dev/null && npm install --registry=https://registry.npmjs.org/ puppeteer-core@21.11.0)
+# a pinned Chrome for Testing: the suite passes on 155; 156+ flags the onfocusin support probe as a CSP
+# violation and older headless builds never fire focus events
+- curl -sSfL -o $HOME/chrome-linux64.zip https://storage.googleapis.com/chrome-for-testing-public/155.0.8059.39/linux64/chrome-linux64.zip
+- unzip -q $HOME/chrome-linux64.zip -d $HOME/seal-chrome && $HOME/seal-chrome/chrome-linux64/chrome --version
+- NODE_PATH=$HOME/seal-qunit/node_modules PUPPETEER_MODULE=puppeteer-core CHROME_PATH=$HOME/seal-chrome/chrome-linux64/chrome node test/seal-qunit-runner.js "http://127.0.0.1:8000/test/index.html" 900
+- NODE_PATH=$HOME/seal-qunit/node_modules PUPPETEER_MODULE=puppeteer-core CHROME_PATH=$HOME/seal-chrome/chrome-linux64/chrome node test/seal-qunit-runner.js "http://127.0.0.1:8001/test/index.html?dev=true" 900
+after_failure:
+- tail -n 40 /tmp/php-server-*.log
